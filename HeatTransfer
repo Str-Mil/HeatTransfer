@@ -1,0 +1,115 @@
+import numpy as np
+import math 
+import matplotlib.pyplot as plt
+import sys
+
+print("2D heat equation solver")
+
+# Plate dimensions (square X x Y)
+plate_length_x = 200 #mm
+plate_length_y = 200 #mm
+
+max_iter_time = 500 # Maximum number of time iterations
+
+# Material properties
+kappa = 180 # thermal conductivity W/(m * K)
+rho = 2700 # density kg/m^3
+cp = 890 # specific heat capacity J/(kg*K)
+alpha = kappa/(rho*cp) # thermal diffusivity
+h = 500 #heat transfer coefficient [W/(m**2 * K)]
+#epsilon = 0.0000000567 #Stefah-Boltzman [W/(m**2*K**4)]
+#sigma = 0.5 #emissivity coefficient
+
+# Initial condition everywhere inside the plate (initial temperature)
+T_initial = 0.0
+
+# Boundary conditions of the plate
+T_top = 0.0
+T_left = 0.0
+T_bottom = 0.0
+T_right = 0.0
+
+N = 1200  #rotational speed [rpm]
+omega = 2*math.pi * N/60 #rotational speed [rad/s]
+
+Rs = 12.7 #radius of tool shoulder [mm]
+Rp = 5 #radius of tool pin [mm]
+Hp = 8 #height of tool pin [mm]
+mi = 0.4 #friction coefficent
+F = 14500 #axial force [N]
+P = (4*F)/(math.pi*(2*Rs)**2) # pressure [Pa]
+
+delta_x = 1 # finite element size
+delta_t = (delta_x ** 2)/(4 * alpha) # time increment
+gamma = (alpha * delta_t) / (delta_x ** 2)
+
+speed_x = 15.0  #step speed x-direction [mm/time step]
+speed_y = 0.0   #step speed y-direction
+
+# Initialize solution: the grid of u(k, i, j)
+T = np.empty((max_iter_time, plate_length_x, plate_length_y))
+# Set the initial condition
+T.fill(T_initial)
+
+# Set the boundary conditions
+T[:, (plate_length_x-1):, :] = T_top
+T[:, :, :1] = T_left
+T[:, :1, 1:] = T_bottom
+T[:, :, (plate_length_y-1):] = T_right
+
+def calculate(T):
+    print("Calculating!")
+    #q = 2 * math.pi * mi * F * omega *(1/3 * Rs ** 3 + Rp ** 2 * Hp)
+    q = 4/3 * math.pi * mi * F * Rs * N
+    source_Area = math.pi * Rs ** 2
+    circle_o_x = 0
+    circle_o_y = plate_length_y / 2
+    for k in range(0, max_iter_time-1, 1):
+        #sys.stdout.write("\r{0} %".format((float(k)/max_iter_time)*100))
+        sys.stdout.write("\r{:3.1f} %\r".format((float(k)/max_iter_time)*100))    
+        sys.stdout.flush() 
+        circle_o_x = circle_o_x + speed_x
+        circle_o_y = circle_o_y + speed_y
+        for i in range(1, plate_length_x-1, delta_x):
+            for j in range(1, plate_length_y-1, delta_x):
+                if (T[k, i, j] > 550):
+                    T[k, i, j] = 550
+                else:
+                     T[k, (int(circle_o_x) - int(Rs)):(int(circle_o_x) + int(Rs)), (int(circle_o_y) - int(Rs)):(int(circle_o_y) + int(Rs))] = T[k-1, (int(circle_o_x) - int(Rs)):(int(circle_o_x) + int(Rs)), (int(circle_o_y) - int(Rs)):(int(circle_o_y) + int(Rs))] + q/(source_Area*h)
+                T[k + 1][i][j] = T[k][i][j] + gamma * (T[k][i+1][j] + T[k][i-1][j] + T[k][i][j+1] + T[k][i][j-1] - 4*T[k][i][j]) 
+                          
+    return T
+
+def plotheatmap(T_k, k):  
+    # Clear the current plot figure
+    plt.clf()
+    plt.xlabel("x")
+    plt.ylabel("y")
+
+    # This is to plot T_k (T at time-step k)
+    plt.contourf(T_k, cmap = plt.get_cmap("jet"), vmin=0, vmax=550)
+    plt.colorbar()
+    return plt
+
+def plotdiagram(T_k):
+    plt.clf()
+    p=np.arange(0, 110, 10)
+    plt.xlabel("Време [$s$]")
+    plt.ylabel("Температура [$K$]")
+    plt.plot(p,T[p,22,22])
+    plt.savefig('diagram.png')
+
+# Do the calculation here
+T = calculate(T)
+
+print(" ")
+print("Plotting!")
+for k in range(0, max_iter_time-5, 5):      
+        plotheatmap(T[k], k)    
+        plt.savefig(str(k) + '.png') #saving figures from every iteration
+        sys.stdout.write("\r{:3.1f} %\r".format((float(k)/max_iter_time)*100))
+        sys.stdout.flush()
+        
+plotdiagram(T[k])
+
+print("Done!")
